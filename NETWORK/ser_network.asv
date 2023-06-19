@@ -1,0 +1,125 @@
+% network
+clc;
+clear;
+
+
+%% network parameters
+
+% get testing and training data
+testingData  = create_imagedatastore('Images/t10k-labels-idx1-ubyte.gz','TestImagesPNG/');
+trainingData = create_imagedatastore('Images/train-labels-idx1-ubyte.gz','TrainImagesPNG/');
+
+% get the fit of transfer function
+Y  = load('tf.mat').uu3;
+X  = linspace(0, 1, length(Y));
+pp = polyfit(X, Y, 6);
+
+% figure;
+% plot(linspace(0,1,256), polyval(pp, linspace(0,1,256)));
+% title("Fitted Transfer Function");
+% xlabel("Input Voltage [V]");
+% ylabel("Output Voltage [V]");
+
+% get the fit of normalized transfer function
+Y2 = Y - min(Y);
+Y2 = Y2 ./ max(Y2);
+pp2 = polyfit(X, Y2, 6);
+dd2 = polyder(pp2);
+
+% figure;
+% plot(linspace(0,1,256), polyval(pp2, linspace(0,1,256)));
+% title("Normalized Fitted Transfer Function");
+% xlabel("Input");
+% ylabel("Output");
+
+
+%% Generate 'effects'
+ef1=@(X)effect1f(X);
+ef2=@(X)effect2f(X);
+ef3=@(X)(max(max(X, [], [28 1])));
+
+%% get the network parameters
+learnRate     = 1e-5;
+numEpochs     = 64;
+miniBatchSize = 512;
+
+ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
+kernel = abs(randn(ss));
+
+
+%% create the network layers
+inputLayer    = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
+kernelLayer   = CustomAmplitudeKernelLayer('kernel', kernel);
+positiveLayer = CustomPositiveLayer('positive');
+Effect1       = functionLayer(ef1, Name='effect1');
+max1          = functionLayer(ef3, Name='max1');
+
+DUT           = reluLayer(Name='dut');
+%DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
+       
+Effect2       = functionLayer(ef2, Name='effect2');
+mult1         = CustomHProdLayer('hprod1');
+flatten       = fullyConnectedLayer(10, Name='flatten');
+L2            = softmaxLayer(Name=)
+classifyy     = classificationLayer(Name='classify');
+
+layers = [
+   inputLayer
+   kernelLayer
+   positiveLayer
+
+
+   max1
+   Effect1
+   DUT
+   Effect2
+   mult1
+
+   flatten
+   L2
+   classifyy
+];
+
+%% connect Layers
+lgraph = layerGraph();
+for i=1:length(layers)
+    lgraph = addLayers(lgraph, layers(i));
+end
+
+lgraph = connectLayers(lgraph, 'input', 'kernel');
+lgraph = connectLayers(lgraph, 'kernel', 'positive');
+
+lgraph = connectLayers(lgraph, 'positive', 'effect1');
+lgraph = connectLayers(lgraph, 'positive', 'max1');
+lgraph = connectLayers(lgraph, 'effect1', 'dut');
+lgraph = connectLayers(lgraph, 'dut', 'effect2');
+lgraph = connectLayers(lgraph, 'effect2', 'hprod1/in1');
+lgraph = connectLayers(lgraph, 'max1', 'hprod1/in2');
+
+lgraph = connectLayers(lgraph, 'hprod1', 'flatten');
+lgraph = connectLayers(lgraph, 'flatten', 'L2');
+lgraph = connectLayers(lgraph, 'L2', 'classify');
+
+figure;
+plot(lgraph);
+
+%% give options to the network
+
+options = trainingOptions('adam',...
+    InitialLearnRate=learnRate,...
+    MaxEpochs=numEpochs,...
+    Shuffle='every-epoch',...
+    ValidationData=testingData,...
+    ValidationFrequency=512,...
+    Verbose=true,...
+    Plots='training-progress',...
+    ExecutionEnvironment='auto',...
+    DispatchInBackground=false,...
+    MiniBatchSize=miniBatchSize);
+
+%% run network
+net = trainNetwork(trainingData, lgraph, options);
+YPred = classify(net,testingData);
+YValidation = testingData.Labels;
+
+accuracy = sum(YPred == YValidation)/numel(YValidation)
