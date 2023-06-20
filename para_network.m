@@ -110,8 +110,8 @@ for j=1:length(ppContainer)
     lgraph = connectLayers(lgraph, 'flatten', 'L2');
     lgraph = connectLayers(lgraph, 'L2', 'classify');
     
-    figure;
-    plot(lgraph);
+    %figure;
+    %plot(lgraph);
     
     %% give options to the network
     
@@ -134,35 +134,38 @@ for j=1:length(ppContainer)
         Shuffle='every-epoch',...
         ValidationData=testingData,...
         ValidationFrequency=512,...
-        Verbose=true,...
-        ExecutionEnvironment='auto',...
+        Verbose=false,...
+        ExecutionEnvironment='cpu',...
         DispatchInBackground=false,...
         MiniBatchSize=miniBatchSize);
     end
     
     %% run network
-    NRUNS=1;
+    NRUNS=30;
     acc=zeros(NRUNS,1);
+    disp("Running "+j+" cell");
     if run_stats
-        for i=1:NRUNS
+        parfor i=1:NRUNS
+            disp("Run "+i+" scheduled");
             net = trainNetwork(trainingData, lgraph, options);
             YPred = classify(net,testingData);
             YValidation = testingData.Labels;
             
             accuracy = sum(YPred == YValidation)/numel(YValidation)
             acc(i)   = accuracy;
+            disp("Run "+i+" finished");
         end
     
     %% statistics
-    avg_accuracy = mean(acc)
-    sdv_accuracy = std(acc)
-    var_accuracy = sdv_accuracy.^2
-
-
-    ppContainer(j).acc = acc;
-    ppContainer(j).avg = avg_accuracy;
-    ppContainer(j).sdv = sdv_accuracy;
-    ppContainer(j).var = var_accuracy;
+        avg_accuracy = mean(acc)
+        sdv_accuracy = std(acc)
+        var_accuracy = sdv_accuracy.^2
+    
+    
+        ppContainer(j).acc = acc;
+        ppContainer(j).avg = avg_accuracy;
+        ppContainer(j).sdv = sdv_accuracy;
+        ppContainer(j).var = var_accuracy;
     else
         net = trainNetwork(trainingData, lgraph, options);
         YPred = classify(net,testingData);

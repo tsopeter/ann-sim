@@ -4,6 +4,10 @@ classdef Container
     
     properties
         Id
+        acc
+        avg
+        sdv
+        var
     end
     
     methods
