@@ -2,6 +2,9 @@
 clc;
 clear;
 
+%% Testing parameters
+run_stats = true;
+
 
 %% network parameters
 
@@ -69,13 +72,14 @@ positiveLayer = CustomPositiveLayer('positive');
 Effect1       = functionLayer(ef1, Name='effect1', Formattable=true);
 max1          = functionLayer(ef3, Name='max1', Formattable=true);
 
-%DUT           = reluLayer(Name='dut');
+% DUT           = reluLayer(Name='dut');
 DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
        
 Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
 flatten       = fullyConnectedLayer(10, Name='flatten');
-L2            = softmaxLayer(Name='L2');
+%L2            = softmaxLayer(Name='L2');
+L2            = sigmoidLayer("Name","L2");
 classifyy     = classificationLayer(Name='classify');
 
 layers = [
@@ -120,6 +124,7 @@ plot(lgraph);
 
 %% give options to the network
 
+if run_stats == false
 options = trainingOptions('adam',...
     InitialLearnRate=learnRate,...
     MaxEpochs=numEpochs,...
@@ -131,10 +136,43 @@ options = trainingOptions('adam',...
     ExecutionEnvironment='auto',...
     DispatchInBackground=false,...
     MiniBatchSize=miniBatchSize);
+else
+    options = trainingOptions('adam',...
+    InitialLearnRate=learnRate,...
+    MaxEpochs=numEpochs,...
+    Shuffle='every-epoch',...
+    ValidationData=testingData,...
+    ValidationFrequency=512,...
+    Verbose=true,...
+    ExecutionEnvironment='auto',...
+    DispatchInBackground=false,...
+    MiniBatchSize=miniBatchSize);
+end
+
+
 
 %% run network
-net = trainNetwork(trainingData, lgraph, options);
-YPred = classify(net,testingData);
-YValidation = testingData.Labels;
+NRUNS=25;
+acc=zeros(NRUNS,1);
+if run_stats
+for i=1:NRUNS
+    net = trainNetwork(trainingData, lgraph, options);
+    YPred = classify(net,testingData);
+    YValidation = testingData.Labels;
+    
+    accuracy = sum(YPred == YValidation)/numel(YValidation)
+    acc(i)   = accuracy;
+end
 
-accuracy = sum(YPred == YValidation)/numel(YValidation)
+
+%% statistics
+avg_accuracy = mean(acc)
+sdv_accuracy = std(acc)
+var_accuracy = sdv_accuracy.^2
+else
+    net = trainNetwork(trainingData, lgraph, options);
+    YPred = classify(net,testingData);
+    YValidation = testingData.Labels;
+    
+    accuracy = sum(YPred == YValidation)/numel(YValidation)
+end
