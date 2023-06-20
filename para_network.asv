@@ -14,6 +14,13 @@ trainingData = create_imagedatastore('Images/train-labels-idx1-ubyte.gz','TrainI
 
 X = linspace(0, 1, 256);
 % make sure that functions are bounded between [0, 1] for X=[0, 1]
+
+Y  = load('tf.mat').uu3;
+XX  = linspace(0, 1, length(Y));
+Y2 = Y - min(Y);
+Y2 = Y2 ./ max(Y2);
+pp2 = polyfit(X, Y2, 6);
+
 PPS = {
     getpfit(X, @(X)(X), 1),...
     getpfit(X, @(X)(X.^2), 2),...
@@ -84,8 +91,8 @@ for j=1:length(ppContainer)
     
     %% connect Layers
     lgraph = layerGraph();
-    for =1:length(layers)
-        lgraph = addLayers(lgraph, layers(j));
+    for i=1:length(layers)
+        lgraph = addLayers(lgraph, layers(i));
     end
     
     lgraph = connectLayers(lgraph, 'input', 'kernel');
@@ -133,16 +140,16 @@ for j=1:length(ppContainer)
     end
     
     %% run network
-    NRUNS=25;
+    NRUNS=1;
     acc=zeros(NRUNS,1);
     if run_stats
-        for j=1:NRUNS
+        for i=1:NRUNS
             net = trainNetwork(trainingData, lgraph, options);
             YPred = classify(net,testingData);
             YValidation = testingData.Labels;
             
             accuracy = sum(YPred == YValidation)/numel(YValidation)
-            acc(j)   = accuracy;
+            acc(i)   = accuracy;
         end
     
     %% statistics
@@ -151,7 +158,10 @@ for j=1:length(ppContainer)
     var_accuracy = sdv_accuracy.^2
 
 
-    ppContainer()
+    ppContainer(j).acc = acc;
+    ppContainer(j).avg = avg_accuracy;
+    ppContainer(j).sdv = sdv_accuracy;
+    ppContainer(j).var = var_accuracy;
     else
         net = trainNetwork(trainingData, lgraph, options);
         YPred = classify(net,testingData);
