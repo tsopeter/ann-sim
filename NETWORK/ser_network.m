@@ -61,7 +61,7 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 1e-5;
-numEpochs     = 16;
+numEpochs     = 32;
 miniBatchSize = 96;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
@@ -84,8 +84,8 @@ DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
 Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
 flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='ones', BiasInitializer='ones');
-L2            = softmaxLayer(Name='L2');
-%L2            = sigmoidLayer("Name","L2");
+%L2            = softmaxLayer(Name='L2');
+L2            = sigmoidLayer("Name","L2");
 classifyy     = classificationLayer(Name='classify');
 
 layers = [
