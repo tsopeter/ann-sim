@@ -21,8 +21,8 @@ Y2 = Y - min(Y);
 Y2 = Y2 ./ max(Y2);
 
 PPS = {
-    getpfit(X, @(X)(X), 1),...
-    getpfit(X, @(X)(X.^2), 2),...
+    getpfit(X, @(X)(X), 6),...
+    getpfit(X, @(X)(X.^2), 6),...
     getpfit(X, @(X)(X.^(1/3)), 6),...
     polyfit(XX, Y2, 6),...
 };
@@ -52,8 +52,7 @@ kernel = abs(randn(ss));
 %% create the network layers
 ppContainer(length(PPS))=Container();
 for j=1:length(ppContainer)
-    pp=PPS(j);
-    pp2=cell2mat(pp);
+    pp2=PPS{j};
     dd2=polyder(pp2);
     ppContainer(j).Id = PPSName(j);
 
@@ -69,15 +68,14 @@ for j=1:length(ppContainer)
     Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
     mult1         = CustomHProdLayer('hprod1');
     flatten       = fullyConnectedLayer(10, Name='flatten');
-    %L2            = softmaxLayer(Name='L2');
-    L2            = sigmoidLayer("Name","L2");
+    L2            = softmaxLayer(Name='L2');
+    %L2            = sigmoidLayer("Name","L2");
     classifyy     = classificationLayer(Name='classify');
     
     layers = [
        inputLayer
        kernelLayer
        positiveLayer
-    
     
        max1
        Effect1
