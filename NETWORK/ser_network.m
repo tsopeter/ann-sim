@@ -156,7 +156,7 @@ end
 NRUNS=25;
 acc=zeros(NRUNS,1);
 if run_stats
-    for i=1:NRUNS
+    parfor i=1:NRUNS
         net = trainNetwork(trainingData, lgraph, options);
         YPred = classify(net,testingData);
         YValidation = testingData.Labels;
