@@ -61,7 +61,7 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 1e-5;
-numEpochs     = 32;
+numEpochs     = 128;
 miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
@@ -96,7 +96,7 @@ layers = [
    protect2
    DUT
    flatten
-   %L2
+   L2
    classifyy
 ];
 
