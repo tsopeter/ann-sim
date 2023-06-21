@@ -3,7 +3,7 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = false;
+run_stats = true;
 
 
 %% network parameters
