@@ -41,12 +41,13 @@ ef2=@(X)effect2f(X);
 ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
-learnRate     = 1e-4;
-numEpochs     = 64;
+learnRate     = 1e-5;
+numEpochs     = 8;
 miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
-kernel = abs(randn(ss));
+kernel = exp(1i*zeros(ss));
+lvalue=1e-6;
 
 
 %% create the network layers
@@ -56,18 +57,20 @@ for j=1:length(ppContainer)
     dd2=polyder(pp2);
     ppContainer(j).Id = PPSName(j);
 
-    inputLayer    = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-    kernelLayer   = CustomAmplitudeKernelLayer('kernel', kernel);
-    positiveLayer = CustomPositiveLayer('positive');
-    Effect1       = functionLayer(ef1, Name='effect1', Formattable=true);
-    max1          = functionLayer(ef3, Name='max1', Formattable=true);
-    
+    inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
+    kernelLayer    = CustomPhaseKernelLayer('kernel', kernel,1);
+    protect1       = CustomNaNPreventionLayer('protect1',lvalue);
+    protect2       = CustomNaNPreventionLayer('protect2',lvalue);
+    amplitudeLayer = CustomPolarizationLayer('polar');
+    Effect1        = functionLayer(ef1, Name='effect1', Formattable=true);
+    max1           = functionLayer(ef3, Name='max1', Formattable=true);
+
     % DUT           = reluLayer(Name='dut');
     DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
-           
+       
     Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
     mult1         = CustomHProdLayer('hprod1');
-    flatten       = fullyConnectedLayer(10, Name='flatten');
+    flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='ones', BiasInitializer='ones');
     L2            = softmaxLayer(Name='L2');
     %L2            = sigmoidLayer("Name","L2");
     classifyy     = classificationLayer(Name='classify');
@@ -75,14 +78,10 @@ for j=1:length(ppContainer)
     layers = [
        inputLayer
        kernelLayer
-       positiveLayer
-    
-       max1
-       Effect1
+       amplitudeLayer
+       protect1
+       protect2
        DUT
-       Effect2
-       mult1
-    
        flatten
        L2
        classifyy
@@ -95,16 +94,15 @@ for j=1:length(ppContainer)
     end
     
     lgraph = connectLayers(lgraph, 'input', 'kernel');
-    lgraph = connectLayers(lgraph, 'kernel', 'positive');
+    lgraph = connectLayers(lgraph, 'kernel/out1', 'protect1');
+    lgraph = connectLayers(lgraph, 'kernel/out2', 'protect2');
     
-    lgraph = connectLayers(lgraph, 'positive', 'effect1');
-    lgraph = connectLayers(lgraph, 'positive', 'max1');
-    lgraph = connectLayers(lgraph, 'effect1', 'dut');
-    lgraph = connectLayers(lgraph, 'dut', 'effect2');
-    lgraph = connectLayers(lgraph, 'effect2', 'hprod1/in1');
-    lgraph = connectLayers(lgraph, 'max1', 'hprod1/in2');
+    lgraph = connectLayers(lgraph, 'protect1', 'polar/in1');
+    lgraph = connectLayers(lgraph, 'protect2', 'polar/in2');
     
-    lgraph = connectLayers(lgraph, 'hprod1', 'flatten');
+    lgraph = connectLayers(lgraph, 'polar', 'dut');
+    lgraph = connectLayers(lgraph, 'dut', 'flatten');
+    
     lgraph = connectLayers(lgraph, 'flatten', 'L2');
     lgraph = connectLayers(lgraph, 'L2', 'classify');
     
