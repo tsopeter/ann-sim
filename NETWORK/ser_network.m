@@ -3,7 +3,7 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = true;
+run_stats = false;
 
 
 %% network parameters
@@ -58,8 +58,8 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 1e-5;
-numEpochs     = 128;
-miniBatchSize = 512;
+numEpochs     = 16;
+miniBatchSize = 96;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
 kernel = abs(randn(ss));
@@ -78,8 +78,8 @@ DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
 Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
 flatten       = fullyConnectedLayer(10, Name='flatten');
-%L2            = softmaxLayer(Name='L2');
-L2            = sigmoidLayer("Name","L2");
+L2            = softmaxLayer(Name='L2');
+%L2            = sigmoidLayer("Name","L2");
 classifyy     = classificationLayer(Name='classify');
 
 layers = [
@@ -88,11 +88,11 @@ layers = [
    positiveLayer
 
 
-   max1
-   Effect1
+   %max1
+   %Effect1
    DUT
-   Effect2
-   mult1
+   %Effect2
+   %mult1
 
    flatten
    L2
@@ -108,14 +108,17 @@ end
 lgraph = connectLayers(lgraph, 'input', 'kernel');
 lgraph = connectLayers(lgraph, 'kernel', 'positive');
 
-lgraph = connectLayers(lgraph, 'positive', 'effect1');
-lgraph = connectLayers(lgraph, 'positive', 'max1');
-lgraph = connectLayers(lgraph, 'effect1', 'dut');
-lgraph = connectLayers(lgraph, 'dut', 'effect2');
-lgraph = connectLayers(lgraph, 'effect2', 'hprod1/in1');
-lgraph = connectLayers(lgraph, 'max1', 'hprod1/in2');
+%lgraph = connectLayers(lgraph, 'positive', 'effect1');
+%lgraph = connectLayers(lgraph, 'positive', 'max1');
+%lgraph = connectLayers(lgraph, 'effect1', 'dut');
+%lgraph = connectLayers(lgraph, 'dut', 'effect2');
+%lgraph = connectLayers(lgraph, 'effect2', 'hprod1/in1');
+%lgraph = connectLayers(lgraph, 'max1', 'hprod1/in2');
+%lgraph = connectLayers(lgraph, 'hprod1', 'flatten');
 
-lgraph = connectLayers(lgraph, 'hprod1', 'flatten');
+lgraph = connectLayers(lgraph, 'positive', 'dut');
+lgraph = connectLayers(lgraph, 'dut', 'flatten');
+
 lgraph = connectLayers(lgraph, 'flatten', 'L2');
 lgraph = connectLayers(lgraph, 'L2', 'classify');
 

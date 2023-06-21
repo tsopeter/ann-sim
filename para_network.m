@@ -41,9 +41,9 @@ ef2=@(X)effect2f(X);
 ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
-learnRate     = 1e-5;
-numEpochs     = 128;
-miniBatchSize = 512;
+learnRate     = 1e-4;
+numEpochs     = 64;
+miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
 kernel = abs(randn(ss));
