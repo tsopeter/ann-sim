@@ -3,7 +3,7 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = true;
+run_stats = false;
 
 
 %% network parameters
@@ -28,6 +28,9 @@ Y2 = Y - min(Y);
 Y2 = Y2 ./ max(Y2);
 pp2 = polyfit(X, Y2, 6);
 dd2 = polyder(pp2);
+
+pp2 = [1 0];
+dd2 = [1];
 
 figure;
 plot(linspace(0,1,256), polyval(pp2, linspace(0,1,256)));
@@ -78,8 +81,8 @@ DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
 Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
 flatten       = fullyConnectedLayer(10, Name='flatten');
-%L2            = softmaxLayer(Name='L2');
-L2            = sigmoidLayer("Name","L2");
+L2            = softmaxLayer(Name='L2');
+%L2            = sigmoidLayer("Name","L2");
 classifyy     = classificationLayer(Name='classify');
 
 layers = [
