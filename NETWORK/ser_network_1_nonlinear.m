@@ -29,8 +29,8 @@ Y2 = Y2 ./ max(Y2);
 pp2 = polyfit(X, Y2, 6);
 dd2 = polyder(pp2);
 
-pp2 = [1 0];
-dd2 = [1];
+% pp2 = [1 0];
+% dd2 = [1];
 
 figure;
 plot(linspace(0,1,256), polyval(pp2, linspace(0,1,256)));
@@ -150,10 +150,8 @@ else
     MiniBatchSize=miniBatchSize);
 end
 
-
-
 %% run network
-NRUNS=25;
+NRUNS=10;
 acc=zeros(NRUNS,1);
 if run_stats
     for i=1:NRUNS
