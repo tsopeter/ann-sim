@@ -2,6 +2,9 @@
 clc;
 clear;
 
+%% Testing parameters
+run_stats = true;
+
 
 %% network parameters
 
@@ -26,11 +29,29 @@ Y2 = Y2 ./ max(Y2);
 pp2 = polyfit(X, Y2, 6);
 dd2 = polyder(pp2);
 
-% figure;
-% plot(linspace(0,1,256), polyval(pp2, linspace(0,1,256)));
-% title("Normalized Fitted Transfer Function");
-% xlabel("Input");
-% ylabel("Output");
+pp2 = [1 0];
+dd2 = [1];
+
+figure;
+plot(linspace(0,1,256), polyval(pp2, linspace(0,1,256)));
+hold on;
+plot(linspace(0,1,256), linspace(0,1,256));
+hold off;
+title("Normalized Fitted Transfer Function");
+xlabel("Input");
+ylabel("Output");
+legend('SAM Normalized Transfer Function', 'Linear Response slope=1');
+
+figure;
+plot(linspace(0,1,256), polyval(dd2, linspace(0,1,256)));
+hold on;
+plot(linspace(0,1,256), ones(1,256));
+hold off;
+title("Derivative of Normalized Fitted Transfer Function");
+xlabel("Input");
+ylabel("Output");
+legend('SAM Normalized Transfer Function', 'Linear Response slope=1');
+
 
 
 %% Generate 'effects'
@@ -40,41 +61,40 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 1e-5;
-numEpochs     = 64;
-miniBatchSize = 512;
+numEpochs     = 128;
+miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
-kernel = abs(randn(ss));
+kernel = exp(1i*randn(ss));
+lvalue=1e-6;
 
 
 %% create the network layers
-inputLayer    = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-kernelLayer   = CustomAmplitudeKernelLayer('kernel', kernel);
-positiveLayer = CustomPositiveLayer('positive');
-Effect1       = functionLayer(ef1, Name='effect1');
-max1          = functionLayer(ef3, Name='max1');
+inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
+kernelLayer    = CustomPhaseKernelLayer('kernel', kernel,1);
+protect1       = CustomNaNPreventionLayer('protect1',lvalue);
+protect2       = CustomNaNPreventionLayer('protect2',lvalue);
+amplitudeLayer = CustomPolarizationLayer('polar');
+Effect1        = functionLayer(ef1, Name='effect1', Formattable=true);
+max1           = functionLayer(ef3, Name='max1', Formattable=true);
 
 DUT           = reluLayer(Name='dut');
 %DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
        
-Effect2       = functionLayer(ef2, Name='effect2');
+Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
-flatten       = fullyConnectedLayer(10, Name='flatten');
-L2            = softmaxLayer(Name=)
+flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
+L2            = softmaxLayer(Name='L2');
+%L2            = sigmoidLayer("Name","L2");
 classifyy     = classificationLayer(Name='classify');
 
 layers = [
    inputLayer
    kernelLayer
-   positiveLayer
-
-
-   max1
-   Effect1
+   amplitudeLayer
+   protect1
+   protect2
    DUT
-   Effect2
-   mult1
-
    flatten
    L2
    classifyy
@@ -87,24 +107,25 @@ for i=1:length(layers)
 end
 
 lgraph = connectLayers(lgraph, 'input', 'kernel');
-lgraph = connectLayers(lgraph, 'kernel', 'positive');
+lgraph = connectLayers(lgraph, 'kernel/out1', 'protect1');
+lgraph = connectLayers(lgraph, 'kernel/out2', 'protect2');
 
-lgraph = connectLayers(lgraph, 'positive', 'effect1');
-lgraph = connectLayers(lgraph, 'positive', 'max1');
-lgraph = connectLayers(lgraph, 'effect1', 'dut');
-lgraph = connectLayers(lgraph, 'dut', 'effect2');
-lgraph = connectLayers(lgraph, 'effect2', 'hprod1/in1');
-lgraph = connectLayers(lgraph, 'max1', 'hprod1/in2');
+lgraph = connectLayers(lgraph, 'protect1', 'polar/in1');
+lgraph = connectLayers(lgraph, 'protect2', 'polar/in2');
 
-lgraph = connectLayers(lgraph, 'hprod1', 'flatten');
+lgraph = connectLayers(lgraph, 'polar', 'dut');
+lgraph = connectLayers(lgraph, 'dut', 'flatten');
+
 lgraph = connectLayers(lgraph, 'flatten', 'L2');
 lgraph = connectLayers(lgraph, 'L2', 'classify');
+%lgraph = connectLayers(lgraph, 'flatten', 'classify');
 
 figure;
 plot(lgraph);
 
 %% give options to the network
 
+if run_stats == false
 options = trainingOptions('adam',...
     InitialLearnRate=learnRate,...
     MaxEpochs=numEpochs,...
@@ -116,10 +137,42 @@ options = trainingOptions('adam',...
     ExecutionEnvironment='auto',...
     DispatchInBackground=false,...
     MiniBatchSize=miniBatchSize);
+else
+    options = trainingOptions('adam',...
+    InitialLearnRate=learnRate,...
+    MaxEpochs=numEpochs,...
+    Shuffle='every-epoch',...
+    ValidationData=testingData,...
+    ValidationFrequency=512,...
+    Verbose=false,...
+    ExecutionEnvironment='cpu',...
+    DispatchInBackground=false,...
+    MiniBatchSize=miniBatchSize);
+end
+
+
 
 %% run network
-net = trainNetwork(trainingData, lgraph, options);
-YPred = classify(net,testingData);
-YValidation = testingData.Labels;
+NRUNS=48;
+acc=zeros(NRUNS,1);
+if run_stats
+    parfor i=1:NRUNS
+        net = trainNetwork(trainingData, lgraph, options);
+        YPred = classify(net,testingData);
+        YValidation = testingData.Labels;
+        
+        accuracy = sum(YPred == YValidation)/numel(YValidation)
+        acc(i)   = accuracy;
+    end
 
-accuracy = sum(YPred == YValidation)/numel(YValidation)
+%% statistics
+avg_accuracy = mean(acc)
+sdv_accuracy = std(acc)
+var_accuracy = sdv_accuracy.^2
+else
+    net = trainNetwork(trainingData, lgraph, options);
+    YPred = classify(net,testingData);
+    YValidation = testingData.Labels;
+    
+    accuracy = sum(YPred == YValidation)/numel(YValidation)
+end
