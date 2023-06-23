@@ -1,4 +1,4 @@
-classdef CustomPositiveLayer < nnet.layer.Layer % ...
+classdef CustomConstantAddLayer < nnet.layer.Layer % ...
         % & nnet.layer.Formattable ... % (Optional) 
         % & nnet.layer.Acceleratable % (Optional)
 
@@ -6,6 +6,7 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
         % (Optional) Layer properties.
 
         % Declare layer properties here.
+        c
     end
 
     properties (Learnable)
@@ -28,17 +29,18 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
     end
 
     methods
-        function layer = CustomPositiveLayer(Name)
+        function layer = CustomConstantAddLayer(Name, c)
             % (Optional) Create a myLayer.
             % This function must have the same name as the class.
 
             % Define layer constructor function here.
-            layer.Name       = Name;
-            layer.NumInputs  = 1;
+            layer.Name = Name;
+            layer.NumInputs = 1;
             layer.NumOutputs = 1;
+            layer.c = c;
         end
         
-        function Z = predict(layer,X)
+        function Z = predict(layer,X1)
             % Forward input data through the layer at prediction time and
             % output the result and updated state.
             %
@@ -58,10 +60,10 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
             %    parameters.
 
             % Define layer predict function here.
-            Z = abs(X);
+            Z = X1 + layer.c;
         end
 
-        function [dLdX] = backward(layer,X, Z,dLdZ,dLdSout)
+        function [dLdX1] = backward(layer,X1, Z,dLdZ,dLdSout)
             % (Optional) Backward propagate the derivative of the loss
             % function through the layer.
             %
@@ -98,15 +100,7 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
             %    of state parameters.
 
             % Define layer backward function here.
-            % y = sqrt(x.^2)
-            % dydx = 1/2./sqrt(x.^2)*2x
-
-            mX = zeros(size(X));
-            mX(X>=0)=1;
-            mX(X<0)=-1;
-            % chain rule derivative
-            dZdX = mX;
-            dLdX = dLdZ .* dZdX;
+            dLdX1 = dLdZ;
         end
     end
 end

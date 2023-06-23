@@ -3,8 +3,8 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = true;
-
+run_stats = false;
+run_select = 1;
 
 %% network parameters
 
@@ -12,27 +12,61 @@ run_stats = true;
 testingData  = create_imagedatastore('Images/t10k-labels-idx1-ubyte.gz','TestImagesPNG/');
 trainingData = create_imagedatastore('Images/train-labels-idx1-ubyte.gz','TrainImagesPNG/');
 
-X = linspace(0, 1, 256);
-% make sure that functions are bounded between [0, 1] for X=[0, 1]
+M = 3;
+X = linspace(0, M, 256);
 
 Y  = load('tf.mat').uu3;
-XX  = linspace(0, 1, length(Y));
+XX  = linspace(0, M, length(Y));
 Y2 = Y - min(Y);
 Y2 = Y2 ./ max(Y2);
 
 PPS = {
-    getpfit(X, @(X)(X), 6),...
-    getpfit(X, @(X)(X.^2), 6),...
-    getpfit(X, @(X)(X.^(1/3)), 6),...
-    polyfit(XX, Y2, 6),...
+    getpfit(X, @(X)((1/M).*X), 6),...
+    getpfit(X, @(X)(((1/M).*X).^2), 6),...
+    getpfit(X, @(X)(((1/M).*X).^(1/2)), 11),...
+    polyfit(XX, Y2, 4),...
 };
 
 PPSName = [
     "X",...
     "X^2",...
-    "X^(1/3)",...
+    "X^{1/2}",...
     "Normalized Fitted Transfer Function",...
 ];
+
+if run_stats == false
+    PPS = PPS(run_select);
+    PPSName = PPSName(run_select);
+end
+
+%% plot transfer functions
+figure;
+hold on;
+lgnds=[];
+for i=1:length(PPS)
+    pp=PPS{i};
+   plot(X, polyval(pp, X));
+   lgnds=[lgnds;PPSName(i)];
+end
+hold off;
+title("Transfer Functions under Test");
+xlabel("Input");
+ylabel("Output");
+legend(lgnds);
+
+figure;
+hold on;
+lgnds=[];
+for i=1:length(PPS)
+    pp=PPS{i};
+   plot(X, polyval(polyder(pp), X));
+   lgnds=[lgnds;PPSName(i)];
+end
+hold off;
+title("Derivative of Transfer Functions under Test");
+xlabel("Input");
+ylabel("Output");
+legend(lgnds);
 
 
 %% Generate 'effects'
@@ -46,8 +80,9 @@ numEpochs     = 8;
 miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
-kernel = exp(1i*zeros(ss));
-lvalue=1e-6;
+kernel = abs(randn(ss));
+lvalue=1e-8;
+c = 0.5;
 
 
 %% create the network layers
@@ -58,31 +93,46 @@ for j=1:length(ppContainer)
     ppContainer(j).Id = PPSName(j);
 
     inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-    kernelLayer    = CustomPhaseKernelLayer('kernel', kernel,1);
-    protect1       = CustomNaNPreventionLayer('protect1',lvalue);
-    protect2       = CustomNaNPreventionLayer('protect2',lvalue);
-    amplitudeLayer = CustomPolarizationLayer('polar');
-    Effect1        = functionLayer(ef1, Name='effect1', Formattable=true);
-    max1           = functionLayer(ef3, Name='max1', Formattable=true);
+    kernelLayer    = CustomAmplitudeKernelLayer('kernel', kernel);
+    protect1       = CustomNaNPreventionLayer('protect1', lvalue);
+    positiveLayer  = CustomPositiveLayer('post1');
+    add1           = CustomConstantAddLayer('add1', c);
 
     % DUT           = reluLayer(Name='dut');
+    A1            = CustomAnalyzerLayer('a1');
     DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
+
+    % second linear layer
+    L1            = fullyConnectedLayer(128, Name='L1', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
+
+    % force weights to be positive
+    positiveLayer2 = CustomPositiveLayer('post2');
+
+    A2            = CustomAnalyzerLayer('a2');
+
+    DUT2          = CustomPolynomialNonLinearLayer('dut2', pp2, dd2, ss, 1, 1);
        
-    Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
-    mult1         = CustomHProdLayer('hprod1');
-    flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='ones', BiasInitializer='ones');
+    flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
     L2            = softmaxLayer(Name='L2');
     %L2            = sigmoidLayer("Name","L2");
     classifyy     = classificationLayer(Name='classify');
     
     layers = [
-       inputLayer
+       inputLayer       % simulates optical side
        kernelLayer
-       amplitudeLayer
        protect1
-       protect2
+       positiveLayer
+       add1
+       
+       %A1
        DUT
-       flatten
+       L1
+       positiveLayer2
+       A2
+       DUT2
+
+
+       flatten          % digital side
        L2
        classifyy
     ];
@@ -94,20 +144,23 @@ for j=1:length(ppContainer)
     end
     
     lgraph = connectLayers(lgraph, 'input', 'kernel');
-    lgraph = connectLayers(lgraph, 'kernel/out1', 'protect1');
-    lgraph = connectLayers(lgraph, 'kernel/out2', 'protect2');
-    
-    lgraph = connectLayers(lgraph, 'protect1', 'polar/in1');
-    lgraph = connectLayers(lgraph, 'protect2', 'polar/in2');
-    
-    lgraph = connectLayers(lgraph, 'polar', 'dut');
-    lgraph = connectLayers(lgraph, 'dut', 'flatten');
-    
+    lgraph = connectLayers(lgraph, 'kernel', 'protect1');
+    lgraph = connectLayers(lgraph, 'protect1', 'post1');
+
+    lgraph = connectLayers(lgraph, 'post1', 'add1');
+    lgraph = connectLayers(lgraph, 'add1', 'dut');
+    lgraph = connectLayers(lgraph, 'dut', 'L1');
+    lgraph = connectLayers(lgraph, 'L1', 'a2');
+    lgraph = connectLayers(lgraph, 'a2', 'dut2');
+    lgraph = connectLayers(lgraph, 'dut2', 'flatten');
+
     lgraph = connectLayers(lgraph, 'flatten', 'L2');
     lgraph = connectLayers(lgraph, 'L2', 'classify');
     
-    %figure;
-    %plot(lgraph);
+    if run_stats == false
+        figure;
+        plot(lgraph);
+    end
     
     %% give options to the network
     
@@ -137,7 +190,7 @@ for j=1:length(ppContainer)
     end
     
     %% run network
-    NRUNS=30;
+    NRUNS=8;
     acc=zeros(NRUNS,1);
     disp("Running "+j+" cell");
     if run_stats
@@ -169,4 +222,20 @@ for j=1:length(ppContainer)
         
         accuracy = sum(YPred == YValidation)/numel(YValidation)
     end
+end
+
+if run_stats
+    %% plot results
+    figure;
+    lgnds=[];
+    hold on;
+        for cc=ppContainer
+            plot(cc.acc.*100);
+            lgnds=[lgnds;cc.Id];
+        end
+    hold off;
+    title("Accuracy vs Simulation Count");
+    xlabel("Simulation Count");
+    ylabel("Accuracy");
+    legend(lgnds);
 end

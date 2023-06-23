@@ -1,4 +1,4 @@
-classdef CustomPositiveLayer < nnet.layer.Layer % ...
+classdef CustomAnalyzerLayer < nnet.layer.Layer % ...
         % & nnet.layer.Formattable ... % (Optional) 
         % & nnet.layer.Acceleratable % (Optional)
 
@@ -28,13 +28,13 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
     end
 
     methods
-        function layer = CustomPositiveLayer(Name)
+        function layer = CustomAnalyzerLayer(Name)
             % (Optional) Create a myLayer.
             % This function must have the same name as the class.
 
             % Define layer constructor function here.
-            layer.Name       = Name;
-            layer.NumInputs  = 1;
+            layer.Name = Name;
+            layer.NumInputs = 1;
             layer.NumOutputs = 1;
         end
         
@@ -58,10 +58,10 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
             %    parameters.
 
             % Define layer predict function here.
-            Z = abs(X);
+            Z = X;
         end
 
-        function [dLdX] = backward(layer,X, Z,dLdZ,dLdSout)
+        function [dLdX] = backward(layer,X, Z, dLdZ,dLdSout)
             % (Optional) Backward propagate the derivative of the loss
             % function through the layer.
             %
@@ -98,15 +98,7 @@ classdef CustomPositiveLayer < nnet.layer.Layer % ...
             %    of state parameters.
 
             % Define layer backward function here.
-            % y = sqrt(x.^2)
-            % dydx = 1/2./sqrt(x.^2)*2x
-
-            mX = zeros(size(X));
-            mX(X>=0)=1;
-            mX(X<0)=-1;
-            % chain rule derivative
-            dZdX = mX;
-            dLdX = dLdZ .* dZdX;
+            dLdX = dLdZ;
         end
     end
 end
