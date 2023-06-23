@@ -78,8 +78,8 @@ amplitudeLayer = CustomPolarizationLayer('polar');
 Effect1        = functionLayer(ef1, Name='effect1', Formattable=true);
 max1           = functionLayer(ef3, Name='max1', Formattable=true);
 
-% DUT           = reluLayer(Name='dut');
-DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
+DUT           = reluLayer(Name='dut');
+%DUT           = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
        
 Effect2       = functionLayer(ef2, Name='effect2', Formattable=true);
 mult1         = CustomHProdLayer('hprod1');
@@ -144,8 +144,8 @@ else
     Shuffle='every-epoch',...
     ValidationData=testingData,...
     ValidationFrequency=512,...
-    Verbose=true,...
-    ExecutionEnvironment='auto',...
+    Verbose=false,...
+    ExecutionEnvironment='cpu',...
     DispatchInBackground=false,...
     MiniBatchSize=miniBatchSize);
 end
@@ -153,7 +153,7 @@ end
 
 
 %% run network
-NRUNS=25;
+NRUNS=48;
 acc=zeros(NRUNS,1);
 if run_stats
     parfor i=1:NRUNS
