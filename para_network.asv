@@ -4,15 +4,10 @@ clear;
 
 %% Testing parameters
 run_stats = false;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
-run_select = 7;         % selects a SINGLE nonlinear function (only active when run_stats is false)
-N_RUNS    = 8;          % number of runs, used for averaging (only active when run_stats is true)
-N_LAYERS  = 1;          % number of layers used for network
-CONT = [1 2 7];         % Indicies used for running nonlinearities (only active when run_stats is true)
-allow_above_saturation = true;
-
-if run_stats == false
-    CONT = 1;
-end
+run_select = 7;         % selects a SINGLE nonlinear function
+N_RUNS    = 8;
+N_LAYERS  = 1;
+CONT = [1 2 7];
 
 %% network parameters
 
@@ -155,8 +150,8 @@ for j=CONT
     end
        
     flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
-    L2            = softmaxLayer(Name='L2');
-    %L2            = sigmoidLayer("Name","L2");
+    %L2            = softmaxLayer(Name='L2');
+    L2            = sigmoidLayer("Name","L2");
     classifyy     = classificationLayer(Name='classify');
     
     if N_LAYERS == 2
@@ -166,6 +161,7 @@ for j=CONT
            protect1
            positiveLayer
            add1
+           sat1
            
            %A1
            DUT
@@ -188,16 +184,13 @@ for j=CONT
           protect1
           positiveLayer
           add1
+          sat1
 
           DUT
           flatten
           L2
           classifyy
         ];
-    end
-
-    if allow_above_saturation == false
-        layers = [layers sat1];
     end
     
     %% connect Layers
@@ -211,13 +204,8 @@ for j=CONT
     lgraph = connectLayers(lgraph, 'protect1', 'post1');
 
     lgraph = connectLayers(lgraph, 'post1', 'add1');
-
-    if allow_above_saturation
-        lgraph = connectLayers(lgraph, 'add1', 'dut');
-    else
-        lgraph = connectLayers(lgraph, 'add1', 'sat1');
-        lgraph = connectLayers(lgraph, 'sat1', 'dut');
-    end
+    lgraph = connectLayers(lgraph, 'add1', 'sat1');
+    lgraph = connectLayers(lgraph, 'sat1', 'dut');
 
     if N_LAYERS == 2
         lgraph = connectLayers(lgraph, 'dut', 'L1');
