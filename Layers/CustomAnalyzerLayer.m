@@ -6,6 +6,8 @@ classdef CustomAnalyzerLayer < nnet.layer.Layer % ...
         % (Optional) Layer properties.
 
         % Declare layer properties here.
+        store
+        alert
     end
 
     properties (Learnable)
@@ -28,7 +30,7 @@ classdef CustomAnalyzerLayer < nnet.layer.Layer % ...
     end
 
     methods
-        function layer = CustomAnalyzerLayer(Name)
+        function layer = CustomAnalyzerLayer(Name, alert)
             % (Optional) Create a myLayer.
             % This function must have the same name as the class.
 
@@ -36,6 +38,7 @@ classdef CustomAnalyzerLayer < nnet.layer.Layer % ...
             layer.Name = Name;
             layer.NumInputs = 1;
             layer.NumOutputs = 1;
+            layer.alert = alert;
         end
         
         function Z = predict(layer,X)
@@ -58,6 +61,11 @@ classdef CustomAnalyzerLayer < nnet.layer.Layer % ...
             %    parameters.
 
             % Define layer predict function here.
+
+            if max(X, [], 'all') > layer.alert
+                error("Exceeded CustomAnalyzerLayer maximum value");
+            end
+
             Z = X;
         end
 
