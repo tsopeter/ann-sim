@@ -3,12 +3,13 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = false;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
-run_select = 7;         % selects a SINGLE nonlinear function (only active when run_stats is false)
-N_RUNS    = 8;          % number of runs, used for averaging (only active when run_stats is true)
-N_LAYERS  = 1;          % number of layers used for network
+run_stats = true;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
+run_select = 1;         % selects a SINGLE nonlinear function (only active when run_stats is false)
+N_RUNS    = 32;          % number of runs per nonlinearity, used for averaging (only active when run_stats is true)
+N_LAYERS  = 2;          % number of layers used for network
 CONT = [1 2 7];         % Indicies used for running nonlinearities (only active when run_stats is true)
-allow_above_saturation = true;
+allow_above_saturation = false;
+remove_dut             = true;
 
 if run_stats == false
     CONT = 1;
@@ -103,13 +104,13 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 6e-5;
-numEpochs     = 12;
+numEpochs     = 16;
 miniBatchSize = 96;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
 kernel = abs(randn(ss));
 lvalue=1e-10;
-c1 = 0.5;
+c1 = 0.2;
 c2 = 0.0;
 
 
@@ -120,6 +121,13 @@ for j=CONT
     if ~isa(pp2, 'function_handle')
         dd2=polyder(pp2);
     end
+
+    if PPSName(j) == "X"
+        remove_dut = true;      % only allow remove when dut is not tested (i.e., linear)
+    else
+        remove_dut = false;
+    end
+
     ppContainer(j).Id = PPSName(j);
 
     inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
@@ -168,13 +176,10 @@ for j=CONT
            add1
            
            %A1
-           DUT
            L1
            positiveLayer2
            A2
-           sat2
            add2
-           DUT2
     
     
            flatten          % digital side
@@ -189,7 +194,6 @@ for j=CONT
           positiveLayer
           add1
 
-          DUT
           flatten
           L2
           classifyy
@@ -197,7 +201,20 @@ for j=CONT
     end
 
     if allow_above_saturation == false
-        layers = [layers sat1];
+        layers = [layers;sat1];
+    end
+
+    if remove_dut == false
+        layers = [layers;DUT];
+    end
+
+    if N_LAYERS==2
+        if remove_dut == false
+            layers = [layers;DUT2];
+        end
+        if allow_above_saturation == false
+            layers = [layers;sat2];
+        end
     end
     
     %% connect Layers
@@ -212,23 +229,47 @@ for j=CONT
 
     lgraph = connectLayers(lgraph, 'post1', 'add1');
 
-    if allow_above_saturation
-        lgraph = connectLayers(lgraph, 'add1', 'dut');
-    else
-        lgraph = connectLayers(lgraph, 'add1', 'sat1');
-        lgraph = connectLayers(lgraph, 'sat1', 'dut');
+    if remove_dut == false
+        if allow_above_saturation
+            lgraph = connectLayers(lgraph, 'add1', 'dut');
+        else
+            lgraph = connectLayers(lgraph, 'add1', 'sat1');
+            lgraph = connectLayers(lgraph, 'sat1', 'dut');
+        end
     end
 
     if N_LAYERS == 2
-        lgraph = connectLayers(lgraph, 'dut', 'L1');
+        if remove_dut == false
+            lgraph = connectLayers(lgraph, 'dut', 'L1');
+            lgraph = connectLayers(lgraph, 'a2', 'dut2');
+            lgraph = connectLayers(lgraph, 'dut2', 'flatten');
+        else
+            if allow_above_saturation == false
+                lgraph = connectLayers(lgraph, 'add1', 'sat1');
+            end
+            lgraph = connectLayers(lgraph, 'sat1', 'L1');
+            lgraph = connectLayers(lgraph, 'a2', 'flatten');
+        end
+        if allow_above_saturation
+            lgraph = connectLayers(lgraph, 'add1', 'L1');
+            lgraph = connectLayers(lgraph, 'add2', 'a2');
+        else
+            lgraph = connectLayers(lgraph, 'add2', 'sat2');
+            lgraph = connectLayers(lgraph, 'sat2', 'a2');
+        end
         lgraph = connectLayers(lgraph, 'L1', 'post2');
         lgraph = connectLayers(lgraph, 'post2', 'add2');
-        lgraph = connectLayers(lgraph, 'add2', 'sat2');
-        lgraph = connectLayers(lgraph, 'sat2', 'a2');
-        lgraph = connectLayers(lgraph, 'a2', 'dut2');
-        lgraph = connectLayers(lgraph, 'dut2', 'flatten');
     else
-        lgraph = connectLayers(lgraph, 'dut', 'flatten');
+        if remove_dut == false
+            lgraph = connectLayers(lgraph, 'dut', 'flatten');
+        else
+            if allow_above_saturation
+                lgraph = connectLayers(lgraph, 'add1', 'flatten');
+            else
+                lgraph = connectLayers(lgraph, 'add1', 'sat1');
+                lgraph = connectLayers(lgraph, 'sat1', 'flatten');
+            end
+        end
     end
 
     lgraph = connectLayers(lgraph, 'flatten', 'L2');
@@ -306,9 +347,12 @@ if run_stats
     figure;
     lgnds=[];
     hold on;
-        for cc=ppContainer
+        for i=CONT
+            cc = ppContainer(i);
             plot(cc.acc.*100);
-            lgnds=[lgnds;cc.Id];
+            yline(cc.avg*100);
+            yl=cc.Id+" Average";
+            lgnds=[lgnds;cc.Id;yl];
         end
     hold off;
     title("Accuracy vs Simulation Count");
@@ -316,3 +360,5 @@ if run_stats
     ylabel("Accuracy");
     legend(lgnds);
 end
+
+CI = ContainerInspector(ppContainer);
