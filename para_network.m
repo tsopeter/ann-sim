@@ -4,11 +4,11 @@ clear;
 
 %% Testing parameters
 run_stats = true;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
-run_select = 1;         % selects a SINGLE nonlinear function (only active when run_stats is false)
+run_select = 6;         % selects a SINGLE nonlinear function (only active when run_stats is false)
 N_RUNS    = 32;          % number of runs per nonlinearity, used for averaging (only active when run_stats is true)
-N_LAYERS  = 2;          % number of layers used for network
-CONT = [1 2 7];         % Indicies used for running nonlinearities (only active when run_stats is true)
-allow_above_saturation = false;
+N_LAYERS  = 1;          % number of layers used for network
+CONT = [1 6];         % Indicies used for running nonlinearities (only active when run_stats is true)
+allow_above_saturation = true;
 remove_dut             = true;
 
 if run_stats == false
@@ -34,24 +34,23 @@ CV=load('CURVEFIT/cvfit.mat');
 NCV = CV.fn(CV.W-[CV.W(1) 0 0 0], 1);
 SCV = CV.fn(CV.W, 0);
 SSCV = CV.fn(CV.W, 1)-SCV;
+SNCV = CV.fn(CV.W, 1);
 PPS = {
     getpfit(X, @(X)((1/M).*X), 1),...
     getpfit(X, @(X)(((1/M).*X).^2), 6),...
-    polyfit(XX, Y-min(Y), 4),...
-    polyfit(XX, Y2, 4),...
     @(X)(CV.fn(CV.W, X)),...
     @(X)(CV.fn(CV.W-[CV.W(1) 0 0 0], X)),...
     @(X)(CV.fn(CV.W, X)-SCV)/SSCV,...
+    @(X)(CV.fn(CV.W, X)/SNCV),...
 };
 
 PPSName = [
     "X",...
     "X^2",...
-    "Fitted Transfer Function",...
-    "Normalized Fitted Transfer Function",...
     "Fitted Nonlinear Curve",...
     "Shifted Fitted Nonlinear Curve",...
     "Normalized Scaled Fitted Nonlinear Curve",...
+    "Normalized Fitted Nonlinear Curve",...
 ];
 
 if run_stats == false
@@ -103,14 +102,14 @@ ef2=@(X)effect2f(X);
 ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
-learnRate     = 6e-5;
-numEpochs     = 16;
-miniBatchSize = 96;
+learnRate     = 3e-5;
+numEpochs     = 5;
+miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
 kernel = abs(randn(ss));
 lvalue=1e-10;
-c1 = 0.2;
+c1 = 0.0;
 c2 = 0.0;
 
 
@@ -131,7 +130,7 @@ for j=CONT
     ppContainer(j).Id = PPSName(j);
 
     inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-    kernelLayer    = CustomAmplitudeKernelLayer('kernel', kernel);
+    kernelLayer    = fullyConnectedLayer(256, Name="kernel", WeightsInitializer="glorot", BiasInitializer="narrow-normal");
     protect1       = CustomNaNPreventionLayer('protect1', lvalue);
     positiveLayer  = CustomPositiveLayer('post1');
     add1           = CustomConstantAddLayer('add1', c1);
@@ -147,7 +146,7 @@ for j=CONT
     end
 
     % second linear layer
-    L1            = CustomAmplitudeKernelLayer('L1', kernel);
+    L1            = fullyConnectedLayer(128, Name='L1', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
 
     % force weights to be positive
     positiveLayer2 = CustomPositiveLayer('post2');
@@ -163,8 +162,13 @@ for j=CONT
     end
        
     flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
-    L2            = softmaxLayer(Name='L2');
+    %L2            = softmaxLayer(Name='L2');
     %L2            = sigmoidLayer("Name","L2");
+    L2            = reluLayer(Name="L2");           % only nonlinearity is DUT (notice that relu is a nonlinear function, 
+                                                    % but since all values are
+                                                    % guaranteed to be
+                                                    % positive, then relu
+                                                    % is simply linear
     classifyy     = classificationLayer(Name='classify');
     
     if N_LAYERS == 2
