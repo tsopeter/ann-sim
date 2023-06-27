@@ -4,12 +4,12 @@ clear;
 
 %% Testing parameters
 run_stats = true;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
-run_select = 6;         % selects a SINGLE nonlinear function (only active when run_stats is false)
+run_select = 1;         % selects a SINGLE nonlinear function (only active when run_stats is false)
 N_RUNS    = 32;          % number of runs per nonlinearity, used for averaging (only active when run_stats is true)
-N_LAYERS  = 1;          % number of layers used for network
-CONT = [1 6];         % Indicies used for running nonlinearities (only active when run_stats is true)
-allow_above_saturation = true;
-remove_dut             = true;
+N_LAYERS  = 2;          % number of layers used for network
+CONT = [1 5];         % Indicies used for running nonlinearities (only active when run_stats is true)
+allow_above_saturation = false;
+remove_dut             = false;
 
 if run_stats == false
     CONT = 1;
@@ -103,7 +103,7 @@ ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
 learnRate     = 3e-5;
-numEpochs     = 5;
+numEpochs     = 4;
 miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
@@ -130,7 +130,7 @@ for j=CONT
     ppContainer(j).Id = PPSName(j);
 
     inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-    kernelLayer    = fullyConnectedLayer(256, Name="kernel", WeightsInitializer="glorot", BiasInitializer="narrow-normal");
+    kernelLayer    = fullyConnectedLayer(512, Name="kernel", WeightsInitializer="glorot", BiasInitializer="narrow-normal");
     protect1       = CustomNaNPreventionLayer('protect1', lvalue);
     positiveLayer  = CustomPositiveLayer('post1');
     add1           = CustomConstantAddLayer('add1', c1);
@@ -146,7 +146,7 @@ for j=CONT
     end
 
     % second linear layer
-    L1            = fullyConnectedLayer(128, Name='L1', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
+    L1            = fullyConnectedLayer(256, Name='L1', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
 
     % force weights to be positive
     positiveLayer2 = CustomPositiveLayer('post2');
@@ -255,7 +255,9 @@ for j=CONT
             lgraph = connectLayers(lgraph, 'a2', 'flatten');
         end
         if allow_above_saturation
-            lgraph = connectLayers(lgraph, 'add1', 'L1');
+            if remove_dut
+                lgraph = connectLayers(lgraph, 'add1', 'L1');
+            end
             lgraph = connectLayers(lgraph, 'add2', 'a2');
         else
             lgraph = connectLayers(lgraph, 'add2', 'sat2');
