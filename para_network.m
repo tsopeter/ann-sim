@@ -3,13 +3,15 @@ clc;
 clear;
 
 %% Testing parameters
-run_stats = true;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
+run_stats = false;      % true -> Run all nonlinearities described by CONT, false -> Run nonlinearity described by run_select
 run_select = 1;         % selects a SINGLE nonlinear function (only active when run_stats is false)
 N_RUNS    = 32;          % number of runs per nonlinearity, used for averaging (only active when run_stats is true)
-N_LAYERS  = 2;          % number of layers used for network
+N_LAYERS  = 1;          % number of layers used for network
 CONT = [1 5];         % Indicies used for running nonlinearities (only active when run_stats is true)
-allow_above_saturation = false;
-remove_dut             = false;
+allow_above_saturation = false;     % allows for above saturation amount (defined by M)
+remove_dut             = true;     % removes dut (nonlinearity under test), useful for linearizing the network
+use_nonlinearity       = false;     % removes ending nonlinearity (sigmoid, softmax, relu)
+only_linear            = true;     % uses network with only linear response (only with N_LAYERS = 1 for now)
 
 if run_stats == false
     CONT = 1;
@@ -102,15 +104,20 @@ ef2=@(X)effect2f(X);
 ef3=@(X)(max(max(X, [], [28 1])));
 
 %% get the network parameters
-learnRate     = 3e-5;
-numEpochs     = 4;
+learnRate     = 1e-5;
+numEpochs     = 16;
 miniBatchSize = 64;
 
 ss = [size(imread(cell2mat(testingData.Files(1)))), 1];
 kernel = abs(randn(ss));
-lvalue=1e-10;
+lvalue=1e-250;
 c1 = 0.0;
 c2 = 0.0;
+S_AMT = M;
+
+if allow_above_saturation
+    S_AMT = 1000 * M;
+end
 
 
 %% create the network layers
@@ -127,17 +134,25 @@ for j=CONT
         remove_dut = false;
     end
 
+    if remove_dut && only_linear
+        only_linear = true;
+    else
+        only_linear = false;
+    end
+
     ppContainer(j).Id = PPSName(j);
 
     inputLayer     = imageInputLayer(ss, Name='input', Normalization='rescale-zero-one');
-    kernelLayer    = fullyConnectedLayer(512, Name="kernel", WeightsInitializer="glorot", BiasInitializer="narrow-normal");
+    kernelLayer    = fullyConnectedLayer(32, Name='kernel');
+    SShape         = flattenLayer(Name='sshape');
+    PKernel        = CustomPositiveFullyConnectedLayer('kernel', 784, 32);
     protect1       = CustomNaNPreventionLayer('protect1', lvalue);
     positiveLayer  = CustomPositiveLayer('post1');
     add1           = CustomConstantAddLayer('add1', c1);
     sat1           = CustomSaturationLayer('sat1', M);
 
     % DUT           = reluLayer(Name='dut');
-    A1            = CustomAnalyzerLayer('a1', M);
+    A1            = CustomAnalyzerLayer('a1', S_AMT);
 
     if ~isa(pp2, 'function_handle')
         DUT = CustomPolynomialNonLinearLayer('dut',pp2,dd2,ss,1,1);
@@ -146,14 +161,14 @@ for j=CONT
     end
 
     % second linear layer
-    L1            = fullyConnectedLayer(256, Name='L1', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
+    L1            = fullyConnectedLayer(30, Name='L1');
 
     % force weights to be positive
     positiveLayer2 = CustomPositiveLayer('post2');
     add2          = CustomConstantAddLayer('add2', c2);
     sat2          = CustomSaturationLayer('sat2', M);
 
-    A2            = CustomAnalyzerLayer('a2', M);
+    A2            = CustomAnalyzerLayer('a2', S_AMT);
 
     if ~isa(pp2, 'function_handle')
         DUT2 = CustomPolynomialNonLinearLayer('dut2', pp2, dd2, ss, 1, 1);
@@ -161,7 +176,7 @@ for j=CONT
         DUT2 = functionLayer(pp2, Name='dut2');
     end
        
-    flatten       = fullyConnectedLayer(10, Name='flatten', WeightsInitializer='glorot', BiasInitializer='narrow-normal');
+    flatten       = fullyConnectedLayer(10, Name='flatten');
     %L2            = softmaxLayer(Name='L2');
     %L2            = sigmoidLayer("Name","L2");
     L2            = reluLayer(Name="L2");           % only nonlinearity is DUT (notice that relu is a nonlinear function, 
@@ -169,7 +184,8 @@ for j=CONT
                                                     % guaranteed to be
                                                     % positive, then relu
                                                     % is simply linear
-    classifyy     = classificationLayer(Name='classify');
+    %classifyy     = classificationLayer(Name='classify');
+    classifyy = CustomMSEClassificationLayer('classify');
     
     if N_LAYERS == 2
         layers = [
@@ -187,7 +203,6 @@ for j=CONT
     
     
            flatten          % digital side
-           L2
            classifyy
         ];
     else
@@ -199,7 +214,6 @@ for j=CONT
           add1
 
           flatten
-          L2
           classifyy
         ];
     end
@@ -220,66 +234,91 @@ for j=CONT
             layers = [layers;sat2];
         end
     end
+
+    if use_nonlinearity
+        layers = [layers;L2];
+    end
+
+    if only_linear
+        layers = [
+            inputLayer
+            kernel
+            post1
+            flatten
+            classifyy
+        ];
+    end
     
     %% connect Layers
     lgraph = layerGraph();
     for i=1:length(layers)
         lgraph = addLayers(lgraph, layers(i));
     end
+
+    if ~only_linear  
+        lgraph = connectLayers(lgraph, 'input', 'kernel');
+        lgraph = connectLayers(lgraph, 'kernel', 'protect1');
+        lgraph = connectLayers(lgraph, 'protect1', 'post1');
     
-    lgraph = connectLayers(lgraph, 'input', 'kernel');
-    lgraph = connectLayers(lgraph, 'kernel', 'protect1');
-    lgraph = connectLayers(lgraph, 'protect1', 'post1');
-
-    lgraph = connectLayers(lgraph, 'post1', 'add1');
-
-    if remove_dut == false
-        if allow_above_saturation
-            lgraph = connectLayers(lgraph, 'add1', 'dut');
-        else
-            lgraph = connectLayers(lgraph, 'add1', 'sat1');
-            lgraph = connectLayers(lgraph, 'sat1', 'dut');
-        end
-    end
-
-    if N_LAYERS == 2
+        lgraph = connectLayers(lgraph, 'post1', 'add1');
+    
         if remove_dut == false
-            lgraph = connectLayers(lgraph, 'dut', 'L1');
-            lgraph = connectLayers(lgraph, 'a2', 'dut2');
-            lgraph = connectLayers(lgraph, 'dut2', 'flatten');
-        else
-            if allow_above_saturation == false
-                lgraph = connectLayers(lgraph, 'add1', 'sat1');
-            end
-            lgraph = connectLayers(lgraph, 'sat1', 'L1');
-            lgraph = connectLayers(lgraph, 'a2', 'flatten');
-        end
-        if allow_above_saturation
-            if remove_dut
-                lgraph = connectLayers(lgraph, 'add1', 'L1');
-            end
-            lgraph = connectLayers(lgraph, 'add2', 'a2');
-        else
-            lgraph = connectLayers(lgraph, 'add2', 'sat2');
-            lgraph = connectLayers(lgraph, 'sat2', 'a2');
-        end
-        lgraph = connectLayers(lgraph, 'L1', 'post2');
-        lgraph = connectLayers(lgraph, 'post2', 'add2');
-    else
-        if remove_dut == false
-            lgraph = connectLayers(lgraph, 'dut', 'flatten');
-        else
             if allow_above_saturation
-                lgraph = connectLayers(lgraph, 'add1', 'flatten');
+                lgraph = connectLayers(lgraph, 'add1', 'dut');
             else
                 lgraph = connectLayers(lgraph, 'add1', 'sat1');
-                lgraph = connectLayers(lgraph, 'sat1', 'flatten');
+                lgraph = connectLayers(lgraph, 'sat1', 'dut');
             end
         end
+    
+        if N_LAYERS == 2
+            if remove_dut == false
+                lgraph = connectLayers(lgraph, 'dut', 'L1');
+                lgraph = connectLayers(lgraph, 'a2', 'dut2');
+                lgraph = connectLayers(lgraph, 'dut2', 'flatten');
+            else
+                if allow_above_saturation == false
+                    lgraph = connectLayers(lgraph, 'add1', 'sat1');
+                    lgraph = connectLayers(lgraph, 'sat1', 'L1');
+                end
+                lgraph = connectLayers(lgraph, 'a2', 'flatten');
+            end
+            if allow_above_saturation
+                if remove_dut
+                    lgraph = connectLayers(lgraph, 'add1', 'L1');
+                end
+                lgraph = connectLayers(lgraph, 'add2', 'a2');
+            else
+                lgraph = connectLayers(lgraph, 'add2', 'sat2');
+                lgraph = connectLayers(lgraph, 'sat2', 'a2');
+            end
+            lgraph = connectLayers(lgraph, 'L1', 'post2');
+            lgraph = connectLayers(lgraph, 'post2', 'add2');
+        else
+            if remove_dut == false
+                lgraph = connectLayers(lgraph, 'dut', 'flatten');
+            else
+                if allow_above_saturation
+                    lgraph = connectLayers(lgraph, 'add1', 'flatten');
+                else
+                    lgraph = connectLayers(lgraph, 'add1', 'sat1');
+                    lgraph = connectLayers(lgraph, 'sat1', 'flatten');
+                end
+            end
+        end
+    
+        if use_nonlinearity
+            lgraph = connectLayers(lgraph, 'flatten', 'L2');
+            lgraph = connectLayers(lgraph, 'L2', 'classify');
+        else
+            lgraph = connectLayers(lgraph, 'flatten', 'classify');
+        end
+    else
+        lgraph = connectLayers(lgraph, 'input', 'kernel');
+        lgraph = connectLayers(lgraph, 'kernel', 'post1');
+        lgraph = connectLayers(lgraph, 'post1', 'flatten');
+        lgraph = connectLayers(lgraph, 'flatten', 'classify');
     end
-
-    lgraph = connectLayers(lgraph, 'flatten', 'L2');
-    lgraph = connectLayers(lgraph, 'L2', 'classify');
     
     if run_stats == false
         figure;
@@ -289,7 +328,7 @@ for j=CONT
     %% give options to the network
     
     if run_stats == false
-    options = trainingOptions('adam',...
+    options = trainingOptions('sgdm',...
         InitialLearnRate=learnRate,...
         MaxEpochs=numEpochs,...
         Shuffle='every-epoch',...
@@ -301,7 +340,7 @@ for j=CONT
         DispatchInBackground=false,...
         MiniBatchSize=miniBatchSize);
     else
-        options = trainingOptions('adam',...
+        options = trainingOptions('sgdm',...
         InitialLearnRate=learnRate,...
         MaxEpochs=numEpochs,...
         Shuffle='every-epoch',...
